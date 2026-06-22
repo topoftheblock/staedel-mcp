@@ -1,14 +1,28 @@
 {
-    "name": "staedel-mcp",
-    "description": "Städel Museum Model Context Protocol Server",
-    "main": "dist/index.js",
-    "bin": {
-      "staedel-mcp": "dist/index.js"
-    },
-    "dependencies": {
-      "@modelcontextprotocol/ext-apps": "^1.0.1",
-      "@modelcontextprotocol/sdk": "^1.26.0",
-      "fast-xml-parser": "^4.3.0",
-      "zod": "^3.24.2"
-    }
+  "name": "staedel-mcp",
+  "version": "1.0.0",
+  "description": "Städel Museum Model Context Protocol Server",
+  "main": "dist/index.js",
+  "bin": {
+    "staedel-mcp": "dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "check": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "express": "^5.2.1",
+    "fast-xml-parser": "^4.3.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.2"
   }
+}
