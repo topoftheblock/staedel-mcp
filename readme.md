@@ -33,7 +33,7 @@ Launches an interactive MCP App (UI) inside supported clients, allowing users to
 
 ---
 
-## ⚖️ Licensing & Attribution (Important)
+##  Licensing & Attribution (Important)
 
 When using this MCP server, both users and AI agents must adhere to the Städel Museum's licensing rules:
 * **Metadata:** The LIDO XML metadata provided by the Städel API is available under the **CC0 1.0** Public Domain Dedication.
