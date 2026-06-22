@@ -1,0 +1,20 @@
+{
+    "dxt_version": "0.1",
+    "name": "staedel-mcp",
+    "version": "1.0.0",
+    "description": "An MCP server providing access to the Städel Museum Digital Collection via OAI-PMH (LIDO format), including CC BY-SA 4.0 images.",
+    "server": {
+      "type": "node",
+      "entry_point": "dist/index.js",
+      "mcp_config": {
+        "command": "node",
+        "args": ["${__dirname}/dist/index.js"]
+      }
+    },
+    "tools": [
+      { "name": "list-sets", "description": "Lists all OAI sets (collections/departments)" },
+      { "name": "search-museum-objects", "description": "Harvests object IDs using OAI-PMH filters" },
+      { "name": "get-museum-object", "description": "Get LIDO metadata and CC BY-SA 4.0 images for an object" },
+      { "name": "open-staedel-explorer", "description": "Open an interactive Städel Explorer UI" }
+    ]
+  }

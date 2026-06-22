@@ -1,0 +1,14 @@
+{
+    "name": "staedel-mcp",
+    "description": "Städel Museum Model Context Protocol Server",
+    "main": "dist/index.js",
+    "bin": {
+      "staedel-mcp": "dist/index.js"
+    },
+    "dependencies": {
+      "@modelcontextprotocol/ext-apps": "^1.0.1",
+      "@modelcontextprotocol/sdk": "^1.26.0",
+      "fast-xml-parser": "^4.3.0",
+      "zod": "^3.24.2"
+    }
+  }
