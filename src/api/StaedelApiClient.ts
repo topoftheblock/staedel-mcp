@@ -1,14 +1,14 @@
 // src/api/StaedelApiClient.ts
 import { XMLParser } from 'fast-xml-parser';
 import process from 'node:process';
-import { metMuseumRateLimiter } from '../utils/RateLimiter.js'; // Assume renamed to staedelRateLimiter eventually
-import { DEFAULT_MET_API_TIMEOUT_MS } from '../constants.js';
+import { staedelRateLimiter } from '../utils/RateLimiter.js';
+import { DEFAULT_STAEDEL_API_TIMEOUT_MS, STAEDEL_ISIL } from '../constants.js';
 
 // Configuration helpers
 function getApiTimeoutMs(): number {
   const rawTimeout = process.env.STAEDEL_API_TIMEOUT_MS;
   const parsedTimeout = Number.parseInt(rawTimeout || '', 10);
-  return Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : DEFAULT_MET_API_TIMEOUT_MS;
+  return Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : DEFAULT_STAEDEL_API_TIMEOUT_MS;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -29,12 +29,12 @@ export class StaedelApiError extends Error {
 }
 
 export class StaedelApiClient {
-  // Städel's OAI-PMH Base URL
-  private readonly baseUrl: string = 'https://sammlung.staedelmuseum.de/api/oai'; 
+  // Städel's OAI-PMH Base URL (see https://sammlung.staedelmuseum.de/en/oai/guide)
+  private readonly baseUrl: string = 'https://sammlung.staedelmuseum.de/api/oai';
   private readonly requestTimeoutMs: number = getApiTimeoutMs();
   private readonly transientRetryCount: number = 2;
   private readonly transientRetryBackoffMs: number = 300;
-  
+
   // XML Parser instance
   private readonly parser: XMLParser;
 
@@ -50,7 +50,9 @@ export class StaedelApiClient {
         const arrayPaths = [
           'OAI-PMH.ListSets.set',
           'OAI-PMH.ListRecords.record',
-          'OAI-PMH.GetRecord.record.metadata.lido:lido.lido:descriptiveMetadata.lido:eventWrap.lido:eventSet'
+          'OAI-PMH.GetRecord.record.metadata.lido:lidoWrap.lido:lido.lido:descriptiveMetadata.lido:eventWrap.lido:eventSet',
+          'OAI-PMH.GetRecord.record.metadata.lido:lidoWrap.lido:lido.lido:descriptiveMetadata.lido:objectIdentificationWrap.lido:titleWrap.lido:titleSet',
+          'OAI-PMH.GetRecord.record.metadata.lido:lidoWrap.lido:lido.lido:administrativeMetadata.lido:resourceWrap.lido:resourceSet',
         ];
         return arrayPaths.includes(jpath);
       }
@@ -59,12 +61,12 @@ export class StaedelApiClient {
 
   /**
    * Fetches the organizational groupings (Sets) available in the Städel API.
-   * Equivalent to `listDepartments` in the Met API.
    */
   public async listSets(): Promise<any> {
     const url = `${this.baseUrl}?verb=ListSets`;
     const parsed = await this.fetchAndParseXml(url);
-    
+    this.checkForOaiError(parsed);
+
     // OAI-PMH encapsulates sets in <ListSets><set>...</set></ListSets>
     return parsed['OAI-PMH']?.ListSets?.set || [];
   }
@@ -96,13 +98,13 @@ export class StaedelApiClient {
    * Gets rich LIDO metadata for a specific artwork using GetRecord.
    */
   public async getRecord(identifier: string): Promise<any> {
-    // Format identifier to OAI standard if the user only provides the raw ID
-    const oaiId = identifier.startsWith('oai:') 
-      ? identifier 
-      : `oai:sammlung.staedelmuseum.de:${identifier}`;
+    // Format identifier to OAI standard if the user only provides the bare object number
+    const oaiId = identifier.startsWith('oai:')
+      ? identifier
+      : `oai:${STAEDEL_ISIL}:${identifier}`;
 
     const url = `${this.baseUrl}?verb=GetRecord&identifier=${encodeURIComponent(oaiId)}&metadataPrefix=lido`;
-    
+
     const parsed = await this.fetchAndParseXml(url);
     this.checkForOaiError(parsed);
 
@@ -113,7 +115,7 @@ export class StaedelApiClient {
    * Downloads an image from the provided URL and converts it to a base64 string.
    */
   public async getImageAsBase64(imageUrl: string): Promise<{ data: string; mimeType: string }> {
-    const response = await this.fetchWithTransientRetry(imageUrl);
+    const response = await this.fetchWithTransientRetry(imageUrl, { Accept: 'image/*' });
 
     if (!response.ok) {
       throw new StaedelApiError('Unable to load the artwork image right now.', response.status, true);
@@ -136,20 +138,18 @@ export class StaedelApiClient {
    * Fetches data and parses it from XML into a JSON object.
    */
   private async fetchAndParseXml(url: string): Promise<any> {
-    const response = await this.fetchWithTransientRetry(url);
+    const response = await this.fetchWithTransientRetry(url, { Accept: 'application/xml' });
 
     if (!response.ok) {
       throw new StaedelApiError(`The Städel API returned an error (HTTP ${response.status}).`, response.status, true);
     }
 
     const xmlData = await response.text();
-    const parsedJson = this.parser.parse(xmlData);
-    
-    return parsedJson;
+    return this.parser.parse(xmlData);
   }
 
   /**
-   * OAI-PMH returns HTTP 200 even for errors (e.g., idDoesNotExist). 
+   * OAI-PMH returns HTTP 200 even for errors (e.g., idDoesNotExist).
    * We must inspect the XML structure for the <error> tag.
    */
   private checkForOaiError(parsedJson: any): void {
@@ -157,9 +157,8 @@ export class StaedelApiClient {
       const errorNode = parsedJson['OAI-PMH'].error;
       const errorCode = errorNode['@_code'];
       const errorMessage = errorNode['#text'] || 'Unknown OAI-PMH Error';
-      
-      let status = 400;
-      if (errorCode === 'idDoesNotExist') status = 404;
+
+      const status = errorCode === 'idDoesNotExist' ? 404 : 400;
 
       throw new StaedelApiError(`Städel API Error (${errorCode}): ${errorMessage}`, status, true);
     }
@@ -168,12 +167,12 @@ export class StaedelApiClient {
   /**
    * Reliable fetching with timeouts and rate-limit backoffs.
    */
-  private async fetchWithTransientRetry(url: string): Promise<Response> {
+  private async fetchWithTransientRetry(url: string, headers: Record<string, string>): Promise<Response> {
     let attempt = 0;
     while (true) {
       try {
-        const response = await metMuseumRateLimiter.fetch(url, {
-          headers: { 'Accept': 'application/xml', 'User-Agent': 'MCP-Staedel-Server/1.0' },
+        const response = await staedelRateLimiter.fetch(url, {
+          headers: { 'User-Agent': 'staedel-mcp/1.0 (+https://github.com/topoftheblock/staedel-mcp)', ...headers },
           signal: AbortSignal.timeout(this.requestTimeoutMs),
         });
 
@@ -191,7 +190,7 @@ export class StaedelApiClient {
           attempt += 1;
           continue;
         }
-        
+
         if (error instanceof TypeError && error.message.includes('fetch')) {
           throw new StaedelApiError('The Städel API is unreachable. Please check your internet connection.', undefined, true);
         }

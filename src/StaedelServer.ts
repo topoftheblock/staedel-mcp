@@ -1,16 +1,17 @@
 // src/StaedelServer.ts
-import { registerAppTool } from '@modelcontextprotocol/ext-apps/server';
+import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StaedelApiClient } from './api/StaedelApiClient.js';
 import { ListSetsTool } from './tools/ListSetsTool.js';
 import { SearchMuseumObjectsTool } from './tools/SearchMuseumObjectsTool.js';
 import { GetObjectTool } from './tools/GetObjectTool.js';
 import { OpenStaedelExplorerTool } from './tools/OpenStaedelExplorerTool.js';
-import { 
-  OaiListSetsResponseSchema, 
-  SearchMuseumObjectsStructuredContentSchema, 
-  GetMuseumObjectStructuredContentSchema, 
-  OpenStaedelExplorerStructuredContentSchema 
+import { EXPLORER_RESOURCE_URI, buildExplorerHtml } from './ui/explorerResource.js';
+import {
+  OaiListSetsResponseSchema,
+  SearchMuseumObjectsStructuredContentSchema,
+  GetMuseumObjectStructuredContentSchema,
+  OpenStaedelExplorerStructuredContentSchema
 } from './types/types.js';
 
 export function createStaedelServer(): McpServer {
@@ -53,6 +54,13 @@ export function createStaedelServer(): McpServer {
     outputSchema: OpenStaedelExplorerStructuredContentSchema.shape,
     _meta: { ui: { resourceUri: openExplorer.resourceUri } }
   }, openExplorer.execute.bind(openExplorer));
+
+  registerAppResource(server, 'Städel Explorer', EXPLORER_RESOURCE_URI, {
+    description: 'Interactive UI for browsing and filtering the Städel Museum digital collection.',
+    _meta: { ui: { csp: { resourceDomains: ['https://sammlung.staedelmuseum.de'] } } }
+  }, () => ({
+    contents: [{ uri: EXPLORER_RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: buildExplorerHtml() }],
+  }));
 
   return server;
 }

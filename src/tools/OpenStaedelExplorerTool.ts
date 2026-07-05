@@ -1,13 +1,14 @@
 // src/tools/OpenStaedelExplorerTool.ts
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { OpenStaedelExplorerStructuredContentSchema } from '../types/types.js';
+import { EXPLORER_RESOURCE_URI } from '../ui/explorerResource.js';
 import z from 'zod';
 
 export class OpenStaedelExplorerTool {
   public readonly name: string = 'open-staedel-explorer';
   public readonly description: string = 'Open the interactive Städel Explorer app for browsing and filtering objects visually.';
 
-  public readonly resourceUri: string = 'ui://staedel/explorer.html';
+  public readonly resourceUri: string = EXPLORER_RESOURCE_URI;
 
   public readonly inputSchema = z.object({
     set: z.string().optional().describe('Optional OAI Set to filter the explorer'),

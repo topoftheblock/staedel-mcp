@@ -1,64 +1,149 @@
 # Städel Museum MCP Server
 
-A Model Context Protocol (MCP) server that provides AI models with direct access to the **Städel Museum Digital Collection**. This server interfaces with the museum's OAI-PMH API using the LIDO (Lightweight Information Describing Objects) format, allowing AI assistants to harvest records, retrieve rich multilingual metadata, and access high-resolution images.
+<p align="center">
+  <img src="assets/staedel-museum.webp" alt="Städel Museum, Frankfurt am Main" width="640" />
+</p>
+
+A [Model Context Protocol](https://modelcontextprotocol.io) server that gives AI assistants direct
+access to the **[Städel Museum](https://www.staedelmuseum.de) Digital Collection**. It talks to the
+museum's public [OAI-PMH interface](https://sammlung.staedelmuseum.de/en/oai/guide) (LIDO metadata
+format), so an assistant can harvest object records, read rich multilingual metadata, and display
+high-resolution artwork images — with an interactive browsing UI ([MCP Apps](https://github.com/modelcontextprotocol/ext-apps))
+on top.
+
+> This is a personal portfolio project built to demonstrate working with the Model Context
+> Protocol, an OAI-PMH/LIDO harvesting API, and MCP Apps interactive UIs end-to-end — not an
+> official Städel Museum product.
 
 ## Features
 
-This server provides AI models with the following tools to interact with the Städel Museum's collection:
+| Tool | Description |
+| --- | --- |
+| `list-sets` | Lists the OAI-PMH sets (e.g. *Masterpieces*, *Prints and Drawings*) available to filter by. |
+| `search-museum-objects` | Harvests object identifiers, filtered by `set` and/or a `from`/`until` date range, with pagination via `resumptionToken`. |
+| `get-museum-object` | Resolves one object's full LIDO record into clean, normalized JSON — titles, artists, date, medium, dimensions, image, license — plus the image itself. |
+| `open-staedel-explorer` | Opens an interactive [MCP App](https://github.com/modelcontextprotocol/ext-apps) UI for browsing and filtering the collection visually, in hosts that support it. |
 
-### 1. List Sets (`list-sets`)
-Lists all the valid organizational "Sets" (collections, departments, or categories) available in the Städel's OAI-PMH interface.
-* **Inputs:** None
-* **Output:** A list of Set Specs and Set Names (e.g., Paintings, Prints, Drawings).
+Because the Städel exposes its collection through OAI-PMH (a harvesting protocol, not a search
+engine), there is no full-text keyword search — you filter by **set** and/or **date range**, then
+fetch full details per object. The tool descriptions make this explicit so the assistant doesn't
+assume Google-style search is available.
 
-### 2. Search Museum Objects (`search-museum-objects`)
-Harvests object identifiers from the museum. Because this server uses an OAI-PMH interface, standard keyword searching is not supported. Instead, you filter the collection harvest by date or category.
-* **Inputs:**
-  * `set` (string, optional): An OAI-PMH Set spec to filter by.
-  * `from` (string, optional): Datestamp (`YYYY-MM-DD`) to get records modified *after* this date.
-  * `until` (string, optional): Datestamp (`YYYY-MM-DD`) to get records modified *before* this date.
-  * `resumptionToken` (string, optional): Token for pagination.
-* **Output:** A list of OAI identifiers and the total number of records in the current harvest batch.
+<p align="center">
+  <img src="assets/mcp-inspector-tools.png" alt="Tools listed in the MCP Inspector" width="800" />
+</p>
 
-### 3. Get Museum Object (`get-museum-object`)
-Retrieves deep, structured LIDO metadata about a specific artwork using its OAI identifier, including its image (if available under Open Access).
-* **Inputs:**
-  * `objectId` (string): The OAI identifier of the object to retrieve.
-  * `returnImage` (boolean, optional, default: true): Whether to fetch the image and return it as base64 data.
-* **Output:** Multilingual titles, artist names, roles, attributions, dates, dimensions, medium, web links, and the base64-encoded CC BY-SA 4.0 image block.
+## Architecture
 
-### 4. Open Städel Explorer (`open-staedel-explorer`)
-Launches an interactive MCP App (UI) inside supported clients, allowing users to visually browse and filter the harvested collection sets and datestamps.
-* **Inputs:** `set` (optional), `from` (optional), `until` (optional).
+```
+src/
+├── index.ts                 # entry point (stdio or --http)
+├── server-utils.ts           # transport wiring (stdio / Streamable HTTP)
+├── StaedelServer.ts           # registers tools + the explorer UI resource
+├── api/
+│   └── StaedelApiClient.ts    # OAI-PMH client: fetch, retry, XML→JSON, error mapping
+├── tools/
+│   ├── ListSetsTool.ts
+│   ├── SearchMuseumObjectsTool.ts
+│   ├── GetObjectTool.ts        # flattens raw LIDO XML into normalized metadata
+│   └── OpenStaedelExplorerTool.ts
+├── ui/
+│   └── explorerResource.ts     # builds the self-contained MCP App HTML for the explorer
+├── types/types.ts             # Zod schemas for tool inputs/outputs
+└── utils/RateLimiter.ts       # simple request-spacing limiter for the museum API
+```
 
----
+The `get-museum-object` tool does the interesting work: LIDO is a verbose, multilingual, deeply
+nested XML format (via `fast-xml-parser`), and `GetObjectTool` flattens it into a small, stable
+JSON shape — resolving `xml:lang` variants (preferring English, falling back to German), picking
+the highest-resolution image link, and reading each object's actual rights statement instead of
+assuming one blanket license.
 
-##  Licensing & Attribution (Important)
+## Licensing & Attribution (important)
 
-When using this MCP server, both users and AI agents must adhere to the Städel Museum's licensing rules:
-* **Metadata:** The LIDO XML metadata provided by the Städel API is available under the **CC0 1.0** Public Domain Dedication.
-* **Images:** High-resolution images are provided under a **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)** license.
-* **Mandatory Credit Line:** Whenever an image from this server is displayed or referenced, it **must** be accompanied by the following credit line: 
-  > **"Image: CC BY-SA 4.0 Städel Museum, Frankfurt am Main"**
-
----
+* **Metadata** harvested from the OAI-PMH interface is **CC0 1.0** (public domain).
+* **Images** are typically **CC BY-SA 4.0 Städel Museum, Frankfurt am Main**, though some objects
+  carry a different rights statement (e.g. Public Domain Mark) — `get-museum-object` reports the
+  actual license for each object rather than hard-coding one.
+* Whenever an assistant displays or describes an image from this server, it should include the
+  credit line reported in the `license` field.
 
 ## Prerequisites
 
 * [Node.js](https://nodejs.org/) v18 or later
-* [pnpm](https://pnpm.io/) (for building from source)
+* [pnpm](https://pnpm.io/) (via `corepack`)
 
-## Installation & Quick Start
-
-If you are running the server from the source repository:
+## Installation
 
 ```bash
-# 1. Enable corepack and install dependencies
+git clone https://github.com/topoftheblock/staedel-mcp.git
+cd staedel-mcp
 corepack enable
 pnpm install
-
-# 2. Build the TypeScript files and UI bundles
 pnpm run build
+```
 
-# 3. Start the server (Stdio transport)
+## Running
+
+**Stdio** (used by Claude Desktop, Claude Code, and most MCP clients):
+
+```bash
 node dist/index.js
+```
+
+**Streamable HTTP** (for testing with clients that connect over HTTP):
+
+```bash
+node dist/index.js --http
+# -> http://localhost:3001/mcp  (override with PORT env var)
+```
+
+### Add it to Claude Desktop / Claude Code
+
+Add to your MCP client's config (e.g. `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "staedel-museum": {
+      "command": "node",
+      "args": ["/absolute/path/to/staedel-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+### Try it with the MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector node dist/index.js
+```
+
+<p align="center">
+  <img src="assets/mcp-inspector-list-sets-result.png" alt="list-sets tool result in the MCP Inspector" width="800" />
+</p>
+
+## Development
+
+```bash
+pnpm run watch   # tsc --watch
+pnpm run check   # type-check without emitting
+```
+
+The server is a thin, dependency-light wrapper: `StaedelApiClient` owns all HTTP/XML concerns,
+each tool class is a small, independently testable unit, and `src/types/types.ts` defines the Zod
+schemas that make tool inputs/outputs self-documenting to the model.
+
+## Configuration
+
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| `STAEDEL_API_TIMEOUT_MS` | `10000` | Per-request timeout to the Städel API. |
+| `PORT` | `3001` | Port for `--http` mode. |
+
+## Reference
+
+* [Städel Digital Collection OAI-PMH guide](https://sammlung.staedelmuseum.de/en/oai/guide)
+* [LIDO metadata schema](http://www.lido-schema.org/)
+* [Model Context Protocol](https://modelcontextprotocol.io)
+* [MCP Apps](https://github.com/modelcontextprotocol/ext-apps)

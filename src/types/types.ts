@@ -8,8 +8,7 @@ export interface AppResource extends Resource {
 }
 
 // ============================================================================
-// OAI-PMH & LIDO RAW PARSED SCHEMAS
-// These schemas validate the raw JSON output produced by `fast-xml-parser`
+// OAI-PMH SCHEMAS
 // ============================================================================
 
 export const OaiSetSchema = z.object({
@@ -21,94 +20,10 @@ export const OaiListSetsResponseSchema = z.object({
   sets: z.array(OaiSetSchema),
 });
 
-/**
- * Helper for fast-xml-parser text nodes with attributes.
- * Example XML: <lido:appellationValue xml:lang="en">Portrait</lido:appellationValue>
- * Parsed as: { "#text": "Portrait", "@_xml:lang": "en" }
- */
-export const LidoTextNodeSchema = z.union([
-  z.string(),
-  z.number().transform(String),
-  z.object({
-    '#text': z.union([z.string(), z.number().transform(String)]).optional(),
-    '@_xml:lang': z.string().optional(),
-  }).passthrough()
-]);
-
-/**
- * Validates the deeply nested Artist/Actor structure in LIDO.
- * Accounts for multiple actors, roles, and attribution qualifiers.
- */
-export const LidoActorSchema = z.object({
-  'lido:actorInRole': z.object({
-    'lido:actor': z.object({
-      'lido:nameActorSet': z.union([
-        z.object({ 'lido:appellationValue': z.union([LidoTextNodeSchema, z.array(LidoTextNodeSchema)]) }),
-        z.array(z.object({ 'lido:appellationValue': z.union([LidoTextNodeSchema, z.array(LidoTextNodeSchema)]) }))
-      ]).optional(),
-      'lido:actorID': z.any().optional(),
-    }).optional(),
-    'lido:roleActor': z.any().optional(),
-    'lido:attributionQualifierActor': z.union([LidoTextNodeSchema, z.array(LidoTextNodeSchema)]).optional()
-  }).optional()
-}).passthrough();
-
-/**
- * Main LIDO Record Schema wrapper.
- * Uses .passthrough() generously because LIDO metadata is expansive and we only 
- * need to strictly validate the fields we extract for the MCP Server.
- */
-export const LidoRecordSchema = z.object({
-  'lido:lidoRecID': z.union([LidoTextNodeSchema, z.array(LidoTextNodeSchema)]).describe('ISIL combined object identifier'),
-  
-  'lido:descriptiveMetadata': z.object({
-    'lido:objectIdentificationWrap': z.object({
-      'lido:titleWrap': z.object({
-        'lido:titleSet': z.union([
-          z.object({ 'lido:appellationValue': z.union([LidoTextNodeSchema, z.array(LidoTextNodeSchema)]) }),
-          z.array(z.object({ 'lido:appellationValue': z.union([LidoTextNodeSchema, z.array(LidoTextNodeSchema)]) }))
-        ]).optional()
-      }).optional(),
-      'lido:repositoryWrap': z.any().optional(),
-      'lido:objectMeasurementsWrap': z.any().optional(),
-    }).passthrough().optional(),
-    
-    'lido:eventWrap': z.object({
-      'lido:eventSet': z.union([
-         z.object({
-           'lido:event': z.object({
-             'lido:eventActor': z.union([LidoActorSchema, z.array(LidoActorSchema)]).optional(),
-             'lido:eventDate': z.any().optional(),
-             'lido:eventMaterialsTech': z.any().optional()
-           }).passthrough().optional()
-         }),
-         z.array(z.any())
-      ]).optional()
-    }).passthrough().optional(),
-    
-    'lido:objectRelationWrap': z.any().optional()
-  }).passthrough().optional(),
-
-  'lido:administrativeMetadata': z.object({
-    'lido:resourceWrap': z.object({
-      'lido:resourceSet': z.union([
-        z.object({
-          'lido:resourceRepresentation': z.union([
-            z.object({ 'lido:linkResource': LidoTextNodeSchema }),
-            z.array(z.object({ 'lido:linkResource': LidoTextNodeSchema }))
-          ]).optional()
-        }).passthrough(),
-        z.array(z.any())
-      ]).optional()
-    }).passthrough().optional()
-  }).passthrough().optional()
-}).passthrough();
-
-
 // ============================================================================
 // NORMALIZED SCHEMAS FOR LLM CONSUMPTION
 // These define the clean shapes returned by the MCP tools to the AI model.
-// Your tool logic will map `LidoRecordSchema` -> `StaedelObjectResponseSchema`.
+// GetObjectTool flattens the raw LIDO XML (parsed to JSON) into this shape.
 // ============================================================================
 
 export const NormalizedConstituentSchema = z.object({
