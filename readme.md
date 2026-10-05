@@ -20,7 +20,7 @@ on top.
 | Tool | Description |
 | --- | --- |
 | `list-sets` | Lists the OAI-PMH sets (e.g. *Masterpieces*, *Prints and Drawings*) available to filter by. |
-| `search-museum-objects` | Harvests object identifiers, filtered by `set` and/or a `from`/`until` date range, with pagination via `resumptionToken`. |
+| `search-museum-objects` | Harvests the identifiers of live (non-deleted) objects, filtered by `set` and/or a `from`/`until` date range, with pagination via `resumptionToken`. |
 | `get-museum-object` | Resolves one object's full LIDO record into clean, normalized JSON — titles, artists, date, medium, dimensions, image, license — plus the image itself. |
 | `open-staedel-explorer` | Opens an interactive [MCP App](https://github.com/modelcontextprotocol/ext-apps) UI for browsing and filtering the collection visually, in hosts that support it. |
 
@@ -37,27 +37,17 @@ assume Google-style search is available.
 
 ```
 src/
-├── index.ts                 # entry point (stdio or --http)
-├── server-utils.ts           # transport wiring (stdio / Streamable HTTP)
-├── StaedelServer.ts           # registers tools + the explorer UI resource
-├── api/
-│   └── StaedelApiClient.ts    # OAI-PMH client: fetch, retry, XML→JSON, error mapping
-├── tools/
-│   ├── ListSetsTool.ts
-│   ├── SearchMuseumObjectsTool.ts
-│   ├── GetObjectTool.ts        # flattens raw LIDO XML into normalized metadata
-│   └── OpenStaedelExplorerTool.ts
-├── ui/
-│   └── explorerResource.ts     # builds the self-contained MCP App HTML for the explorer
-├── types/types.ts             # Zod schemas for tool inputs/outputs
-└── utils/RateLimiter.ts       # simple request-spacing limiter for the museum API
+├── index.ts      # entry point: stdio, or stateless Streamable HTTP with --http
+├── server.ts     # the four tools and the explorer UI resource
+├── api.ts        # OAI-PMH client: throttled fetch, retry, XML parsing
+├── lido.ts       # flattens a LIDO record into the normalized object (and its Zod schema)
+└── explorer.ts   # the self-contained MCP App HTML for the explorer
 ```
 
-The `get-museum-object` tool does the interesting work: LIDO is a verbose, multilingual, deeply
-nested XML format (via `fast-xml-parser`), and `GetObjectTool` flattens it into a small, stable
-JSON shape — resolving `xml:lang` variants (preferring English, falling back to German), picking
-the highest-resolution image link, and reading each object's actual rights statement instead of
-assuming one blanket license.
+`lido.ts` does the interesting work: LIDO is a verbose, multilingual, deeply nested XML format,
+and `flattenLido` turns it into a small, stable JSON shape — resolving `xml:lang` variants
+(preferring English, falling back to German), picking the largest image rendition, and reading
+each object's actual rights statement instead of assuming one blanket license.
 
 ## Licensing & Attribution (important)
 
@@ -95,7 +85,7 @@ node dist/index.js
 
 ```bash
 node dist/index.js --http
-# -> http://localhost:3001/mcp  (override with PORT env var)
+# -> http://localhost:3001/mcp  (localhost only; override the port with the PORT env var)
 ```
 
 ### Add it to Claude Desktop / Claude Code
@@ -129,10 +119,6 @@ npx @modelcontextprotocol/inspector node dist/index.js
 pnpm run watch   # tsc --watch
 pnpm run check   # type-check without emitting
 ```
-
-The server is a thin, dependency-light wrapper: `StaedelApiClient` owns all HTTP/XML concerns,
-each tool class is a small, independently testable unit, and `src/types/types.ts` defines the Zod
-schemas that make tool inputs/outputs self-documenting to the model.
 
 ## Configuration
 
